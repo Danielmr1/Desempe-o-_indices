@@ -1,6 +1,6 @@
 """
 =============================================================================
-FASE 4: EVALUACIÓN ESTADÍSTICA DE ÍNDICES ESPECTRALES (CURVAS ROC)
+FASE 5: EVALUACIÓN ESTADÍSTICA DE ÍNDICES ESPECTRALES (CURVAS ROC)
 Objetivo: Determinar el índice espectral (dNBR, RBR, RdNBR) con mayor 
 capacidad discriminatoria para severidad de incendios y calcular su umbral óptimo.
 =============================================================================
