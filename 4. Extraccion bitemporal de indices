@@ -1,0 +1,108 @@
+// ============================================================================
+// SCRIPT FASE 4: EXTRACCIÓN DETERMINÍSTICA POR PARES (EXPERT-IN-THE-LOOP)
+// Objetivo: Extracción de indices con fechas exactas certificadas por el usuario.
+// ============================================================================
+
+// ============================================================================
+// 1. PANEL DE CONFIGURACIÓN MANUAL (Editar para cada par)
+// ============================================================================
+var ID_PAR = 1;
+var FECHA_FIRMS = '2020-08-16'; // La fecha del evento FIRMS
+
+// Coordenadas exactas (Obtenidas en Fase 1 y Fase 2)
+var LON_QUEMA = -75.9583729;
+var LAT_QUEMA = -9.2990733;
+
+var LON_CONTROL = -75.9560000; // Coordenadas que te dio el celular en campo
+var LAT_CONTROL = -9.2980000;
+
+// Fechas confirmadas visualmente SIN NUBES. 
+// INSTRUCCIÓN: Si solo hay 1 imagen limpia, escribe la misma fecha dos veces.
+var FECHAS_PRE = ['2020-08-13', '2020-08-13']; 
+var FECHAS_POST = ['2020-08-18', '2020-08-18']; // Aquí se repite porque solo hay 1 imagen limpia
+
+// ============================================================================
+// 2. CONSTRUCCIÓN DEL PAR Y RECUPERACIÓN ÓPTICA
+// ============================================================================
+var ptQuema = ee.Feature(ee.Geometry.Point([LON_QUEMA, LAT_QUEMA]), {
+  'id_par': ID_PAR, 'clase': 1, 'tipo': 'Quema', 'fecha_firms': FECHA_FIRMS
+});
+var ptControl = ee.Feature(ee.Geometry.Point([LON_CONTROL, LAT_CONTROL]), {
+  'id_par': ID_PAR, 'clase': 0, 'tipo': 'Control', 'fecha_firms': FECHA_FIRMS
+});
+
+var pares = ee.FeatureCollection([ptQuema, ptControl]);
+var areaTrabajo = pares.geometry().buffer(100); 
+
+// Función para extraer la imagen limpia exacta del día indicado
+var obtenerImagen = function(fechaStr) {
+  var d = ee.Date(fechaStr);
+  return ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+    .filterBounds(areaTrabajo)
+    .filterDate(d, d.advance(1, 'day'))
+    .mosaic() // Fusiona la imagen si está dividida en dos tiles
+    .divide(10000); // Convierte a reflectancia real
+};
+
+// Promedio matemático (Si las fechas son iguales, el promedio es la misma imagen)
+var pre1 = obtenerImagen(FECHAS_PRE[0]);
+var pre2 = obtenerImagen(FECHAS_PRE[1]);
+var imgPre = ee.ImageCollection.fromImages([pre1, pre2]).mean(); 
+
+var post1 = obtenerImagen(FECHAS_POST[0]);
+var post2 = obtenerImagen(FECHAS_POST[1]);
+var imgPost = ee.ImageCollection.fromImages([post1, post2]).mean();
+
+// ============================================================================
+// 3. ÁLGEBRA ESPACIAL Y CÁLCULO DE ÍNDICES
+// ============================================================================
+var nbrPre = imgPre.normalizedDifference(['B8', 'B12']).rename('NBR_PRE');
+var nbrPost = imgPost.normalizedDifference(['B8', 'B12']).rename('NBR_POST');
+
+var bitemporal = nbrPre.addBands(nbrPost);
+
+var dNBR = bitemporal.expression(
+  '(PRE - POST) * 1000', 
+  { 'PRE': bitemporal.select('NBR_PRE'), 'POST': bitemporal.select('NBR_POST') }
+).rename('dNBR');
+bitemporal = bitemporal.addBands(dNBR);
+
+var RBR = bitemporal.expression(
+  'dNBR / (PRE + 1.001)', 
+  { 'dNBR': bitemporal.select('dNBR'), 'PRE': bitemporal.select('NBR_PRE') }
+).rename('RBR');
+bitemporal = bitemporal.addBands(RBR);
+
+var RdNBR = bitemporal.expression(
+  'abs(PRE) < 0.001 ? dNBR / sqrt(0.001) : dNBR / sqrt(abs(PRE))',
+  { 'dNBR': bitemporal.select('dNBR'), 'PRE': bitemporal.select('NBR_PRE') }
+).rename('RdNBR');
+bitemporal = bitemporal.addBands(RdNBR);
+
+// ============================================================================
+// 4. EXTRACCIÓN SUBA-PÍXEL Y RESULTADOS
+// ============================================================================
+var extraerValores = function(punto) {
+  var valores = bitemporal.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: punto.geometry(),
+    scale: 10
+  });
+  return punto.set(valores);
+};
+
+var resultados = pares.map(extraerValores);
+
+// Imprime los resultados directamente en la consola para copiarlos a tu Excel
+print('✅ ÍNDICES CALCULADOS - PAR ' + ID_PAR);
+print('Punto de Quema:', resultados.filter(ee.Filter.eq('clase', 1)).first());
+print('Punto de Control:', resultados.filter(ee.Filter.eq('clase', 0)).first());
+
+// (Opcional) Si en vez de copiar de la consola prefieres descargar los 25 CSVs
+Export.table.toDrive({
+  collection: resultados,
+  description: 'Extraccion_Par_' + ID_PAR,
+  folder: 'Tesis_LeoncioPrado',
+  fileFormat: 'CSV',
+  selectors: ['id_par', 'clase', 'tipo', 'fecha_firms', 'NBR_PRE', 'NBR_POST', 'dNBR', 'RBR', 'RdNBR']
+});
