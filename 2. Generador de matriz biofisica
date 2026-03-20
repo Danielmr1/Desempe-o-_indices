@@ -1,0 +1,60 @@
+// ============================================================================
+// FASE 2: GENERADOR DE MATRIZ BIOFÍSICA
+// ============================================================================
+
+var coordFIRMS = [-75.9583729, -9.2990733]; //Ingresa aquí la coordenada EXACTA
+var FECHA_PREQUEMA = '2020-08-13'; // Pon aquí la fecha EXACTA que se vio en la FASE 1
+var radioBusqueda = 1000;                   
+
+var puntoFIRMS = ee.Geometry.Point(coordFIRMS);
+var zonaBusqueda = puntoFIRMS.buffer(radioBusqueda).bounds(); 
+
+// 1. Topografía (Elevación, Pendiente, Orientación)
+var srtm = ee.Image('USGS/SRTMGL1_003');
+var elevacion = srtm.select('elevation').rename('elev');
+var pendiente = ee.Terrain.slope(srtm).rename('slope');
+var orientacion = ee.Terrain.aspect(srtm).rename('aspect');
+
+// 2. NDVI Pre-fuego (Extracción Determinística de 1 solo día)
+function maskS2clouds(image) {
+  var scl = image.select('SCL');
+  var mask = scl.neq(3).and(scl.neq(8)).and(scl.neq(9)).and(scl.neq(10));
+  return image.updateMask(mask);
+}
+
+// Filtramos estrictamente ese único día. Usamos .advance(1, 'day') porque GEE 
+// busca desde las 00:00h de la fecha inicial hasta las 00:00h de la fecha final.
+var s2Pre = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+  .filterBounds(zonaBusqueda)
+  .filterDate(ee.Date(FECHA_PREQUEMA), ee.Date(FECHA_PREQUEMA).advance(1, 'day')) 
+  .map(maskS2clouds)
+  .mosaic(); // Usamos mosaic() en lugar de median() para fusionar si hay 2 tiles ese mismo día
+
+var ndviPre = s2Pre.normalizedDifference(['B8', 'B4']).rename('ndvi');
+
+// 3. Ensamblaje y Optimización de RAM
+var cuboDatos = ee.Image.cat([
+  elevacion.toFloat(), 
+  pendiente.toFloat(),
+  orientacion.toFloat(),
+  ndviPre.toFloat()
+]).clip(zonaBusqueda);
+
+// ==========================================================
+// EXPORTACIÓN A CSV (A PRUEBA DE ERRORES MÓVILES)
+// ==========================================================
+
+var tablaDatos = cuboDatos.sample({
+  region: zonaBusqueda,
+  scale: 30,
+  geometries: true,
+  dropNulls: true 
+});
+
+Export.table.toDrive({
+  collection: tablaDatos,
+  description: 'Datos_Para_Campo_01',
+  folder: 'CUBOS_CAMPO',
+  fileNamePrefix: 'Datos_Campo_01',
+  fileFormat: 'CSV'
+});
