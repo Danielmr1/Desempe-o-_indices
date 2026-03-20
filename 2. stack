@@ -1,0 +1,95 @@
+import pandas as pd
+import json
+import matplotlib.pyplot as plt
+import os
+import numpy as np
+
+# ============================================================================
+# SISTEMA DE APOYO EN CAMPO - FILTRO BIOFÍSICO (INCLUYE ORIENTACIÓN CIRCULAR)
+# ============================================================================
+
+# 1. Configuración ajustada estrictamente a la metodología)
+TOL_ELEV = 50
+TOL_SLOPE = 10
+TOL_ASPECT = 45           
+TOL_NDVI = 0.05
+DISTANCIA_MINIMA_M = 150  
+
+# 2. Coordenadas fijas de la quema (Ejemplo)
+LON_FUEGO = -75.9583729
+LAT_FUEGO = -9.2990733
+
+ruta_csv = "/storage/emulated/0/Download/Datos_Campo_01.csv"
+
+def calcular_distancia_metros(lon1, lat1, lon2, lat2):
+    # Estimación rápida de distancia euclidiana en metros para Leoncio Prado
+    dlon = (lon2 - lon1) * 111320 * np.cos(np.radians(lat1))
+    dlat = (lat2 - lat1) * 111000
+    return np.sqrt(dlon**2 + dlat**2)
+
+try:
+    df = pd.read_csv(ruta_csv)
+    
+    # Extraer lon/lat si el CSV viene de GEE con la columna .geo
+    def extraer_coords_base(geo_str):
+        coords = json.loads(geo_str)['coordinates']
+        return pd.Series({'lon': coords[0], 'lat': coords[1]})
+
+    if 'lon' not in df.columns and '.geo' in df.columns:
+        df[['lon', 'lat']] = df['.geo'].apply(extraer_coords_base)
+
+    # Hallar valores biofísicos base en el punto de la quema
+    df['dist_m'] = calcular_distancia_metros(df['lon'], df['lat'], LON_FUEGO, LAT_FUEGO)
+    punto_base = df.loc[df['dist_m'].idxmin()]
+    
+    # NOTA: Asumo que tu columna de orientación se llama 'aspect'
+    v_elev = punto_base['elev']
+    v_slope = punto_base['slope']
+    v_ndvi = punto_base['ndvi']
+    v_aspect = punto_base['aspect'] 
+
+    # 3. LÓGICA CIRCULAR PARA LA ORIENTACIÓN (0-360°)
+    # Resuelve el cruce por el Norte (ej. 350° y 10° están a 20° de diferencia)
+    diff_aspect = np.abs(df['aspect'] - v_aspect)
+    diff_aspect_circular = np.minimum(diff_aspect, 360 - diff_aspect)
+
+    # 4. FILTRADO MULTICRITERIO ESTRICTO (Topografía + Fenología + Distancia)
+    gemelos = df[
+        (np.abs(df['elev'] - v_elev) <= TOL_ELEV) &
+        (np.abs(df['slope'] - v_slope) <= TOL_SLOPE) &
+        (diff_aspect_circular <= TOL_ASPECT) &       # Filtro de orientación circular
+        (np.abs(df['ndvi'] - v_ndvi) <= TOL_NDVI) &
+        (df['dist_m'] >= DISTANCIA_MINIMA_M)         # Asegura independencia térmica
+    ].copy()
+
+    # Ordenar por distancia (El primer resultado será el candidato más cercano a caminar)
+    gemelos = gemelos.sort_values('dist_m')
+
+    print(f"\n✅ RESULTADO: {len(gemelos)} puntos de control candidatos (>{DISTANCIA_MINIMA_M}m).")
+
+    # 5. EXPORTACIÓN DE RESULTADOS
+    ruta_res_csv = "/storage/emulated/0/Download/RESULTADOS_CONTROL.csv"
+    gemelos_out = gemelos[['lon', 'lat', 'dist_m', 'elev', 'slope', 'aspect', 'ndvi']]
+    gemelos_out.to_csv(ruta_res_csv, index=False)
+    
+    print(f"✅ Archivo generado para navegador GPS: {os.path.basename(ruta_res_csv)}")
+
+    # 6. RENDERIZADO DEL MAPA TÁCTICO
+    plt.figure(figsize=(10, 8))
+    plt.scatter(df['lon'], df['lat'], c='lightgrey', s=2, label='Matriz Biofísica')
+    plt.scatter(gemelos['lon'], gemelos['lat'], c='green', s=30, label='Candidatos Óptimos')
+    plt.scatter(LON_FUEGO, LAT_FUEGO, c='red', marker='X', s=120, label='Punto de Quema')
+    
+    plt.title(f"Scouting de Puntos de Control (> {DISTANCIA_MINIMA_M}m)", fontsize=14)
+    plt.xlabel('Longitud'); plt.ylabel('Latitud')
+    plt.legend(loc='best')
+    plt.grid(True, linestyle='--', alpha=0.5)
+    
+    ruta_img = ruta_csv.replace(".csv", "_MAPA_CAMPO.png")
+    plt.savefig(ruta_img, dpi=300, bbox_inches='tight')
+    print(f"✅ Mapa táctico guardado: {os.path.basename(ruta_img)}")
+
+except Exception as e:
+    print(f"❌ Error en el procesamiento: {e}")
+
+input("\nPresiona Enter para finalizar...")
