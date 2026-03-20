@@ -3,7 +3,7 @@
 // ============================================================================
 
 var coordFIRMS = [-75.9583729, -9.2990733]; //Ingresa aquí la coordenada EXACTA
-var FECHA_PREQUEMA = '2020-08-13'; // Pon aquí la fecha EXACTA que se vio en la FASE 1
+var FECHA_PREQUEMA = '2020-08-13'; // Ingresa aquí la fecha EXACTA que se vio en la FASE 1
 var radioBusqueda = 1000;                   
 
 var puntoFIRMS = ee.Geometry.Point(coordFIRMS);
