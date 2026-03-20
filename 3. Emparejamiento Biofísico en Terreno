@@ -5,10 +5,10 @@ import os
 import numpy as np
 
 # ============================================================================
-# SISTEMA DE APOYO EN CAMPO - FILTRO BIOFÍSICO (INCLUYE ORIENTACIÓN CIRCULAR)
+# SCRIPT FASE 3: SISTEMA DE APOYO EN CAMPO - FILTRO BIOFÍSICO
 # ============================================================================
 
-# 1. Configuración ajustada estrictamente a la metodología)
+# 1. Configuración ajustada estrictamente a la metodología
 TOL_ELEV = 50
 TOL_SLOPE = 10
 TOL_ASPECT = 45           
