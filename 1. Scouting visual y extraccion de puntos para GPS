@@ -3,7 +3,7 @@
 // ============================================================================
 
 // 1. PARÁMETROS PRINCIPALES
-var FECHA_MANUAL = '2020-08-16'; // Cambiar según la fecha de tu CSV
+var FECHA_MANUAL = '2020-08-16'; // Cambiar según la fecha del CSV
 var DIAS_BUSQUEDA_FIRMS = 2;
 var DIAS_ANTES_SENTINEL = 6;
 var DIAS_DESPUES_SENTINEL = 6;
@@ -72,9 +72,8 @@ for (var i = 0; i < numImagenes; i++) {
 
 Map.addLayer(firmsFiltrados, {color: 'red', fillColor: 'ff000030'}, 'Cajas FIRMS (Radio de búsqueda)');
 
-// ============================================================================
-// 6. EXTRACCIÓN DE COORDENADAS PARA NAVEGADOR GPS (CORREGIDO)
-// ============================================================================
+// 6. EXTRACCIÓN DE COORDENADAS PARA NAVEGADOR GPS
+
 try {
   var puntos = ee.FeatureCollection(puntosDibujados);
   var numPuntos = puntos.size().getInfo();
